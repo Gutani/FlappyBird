@@ -2,8 +2,11 @@ package com.odevgustavo.flappybird;
 
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Preferences;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -11,12 +14,20 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Circle;
 import com.badlogic.gdx.math.Intersector;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.utils.viewport.StretchViewport;
+import com.badlogic.gdx.utils.viewport.Viewport;
 
 import java.util.Random;
 
 public class FB extends ApplicationAdapter {
+	//Screen and ViewPort Object
+	private OrthographicCamera orthographicCamera;
+	private Viewport viewport;
+	private final float VIRTUAL_WIDTH = 720;
+	private final float VIRTUAL_HEIGHT = 1280;
 
-	float birdX = 60, birdY =  0;
+	private float positionHorizontalBird = 0;
+	float birdX = 60 + positionHorizontalBird, birdY =  0;
 	private float birdAnimation = 0;
 	private SpriteBatch spriteBatch;
 	private Texture background, bird[];
@@ -32,10 +43,9 @@ public class FB extends ApplicationAdapter {
 	//Game Status
 	private int gameState = 0;
 
-
 	private Circle circleBird;
 	private Rectangle rectanglePipeUp, rectanglePipeDown;
-	private ShapeRenderer shapeRenderer;
+	//private ShapeRenderer shapeRenderer;
 
 	//Text
 	BitmapFont score;
@@ -49,22 +59,31 @@ public class FB extends ApplicationAdapter {
 	//Settings
 	private float getWidth;
 	private float getHeight;
-	
+
+	Sound soundCollision, soundWings, soundScore;
+
+	//Saving Score
+	Preferences scoreSaved;
+	int maxScore;
+
 	@Override
 	public void create () {
 		Gdx.app.log("Create", "Initiated");
 		initiateObjects();
 		initiateTexture();
-
 	}
 
 	@Override
 	public void render () {
+		//Clean Frames
+		Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+
 		drawTexture();
 		verifyGameStatus();
 		validateScore();
 		collisionDetection();
 	}
+
 	private void verifyGameStatus(){
 
 		//Game Status
@@ -73,11 +92,13 @@ public class FB extends ApplicationAdapter {
 			if(Gdx.input.justTouched()){
 				gravity = -15;
 				gameState = 1;
+				soundWings.play();
 			}
 		}else if( gameState == 1 ){
 			//Touching the screen to move the bird
 			if(Gdx.input.justTouched()){
 				gravity = -15;
+				soundWings.play();
 			}
 			//Movement and restart of pipe on screen
 			pipeMovement -= Gdx.graphics.getDeltaTime()*500;
@@ -95,31 +116,39 @@ public class FB extends ApplicationAdapter {
 
 			Gdx.app.log("Height", String.valueOf(getHeight));
 
-
 			gravity++;
 
 		}else if( gameState ==2 ){
-
+			if(scoreValue> maxScore){
+				maxScore = scoreValue;
+				scoreSaved.putInteger("LastMaxScore", maxScore);
+			}
+			positionHorizontalBird-= Gdx.graphics.getDeltaTime()*500;
+			if(Gdx.input.justTouched()){
+				gameState = 0;
+				scoreValue = 0;
+				gravity = 0;
+				birdY = getHeight/2;
+				pipeMovement = getWidth;
+				positionHorizontalBird = 0;
+			}
 		}
-
-
-
-
-
-
-
-
-
-
-
 	}
+
 	private void initiateObjects(){
+
+		orthographicCamera = new OrthographicCamera();
+		orthographicCamera.position.set(VIRTUAL_WIDTH/2, VIRTUAL_HEIGHT/2, 0);
+		viewport = new StretchViewport(VIRTUAL_WIDTH, VIRTUAL_HEIGHT, orthographicCamera);
+
 		//Essencial
 		spriteBatch = new SpriteBatch();
 		random = new Random();
 		//Width and Screen Height
-		getWidth = Gdx.graphics.getWidth();
-		getHeight = Gdx.graphics.getHeight();
+		getWidth = VIRTUAL_WIDTH;
+		getHeight = VIRTUAL_HEIGHT;
+		//getWidth = Gdx.graphics.getWidth();
+		//getHeight = Gdx.graphics.getHeight();
 		birdY = getHeight/2;
 		//Moviment of pipes
 		pipeMovement = getWidth;
@@ -136,13 +165,18 @@ public class FB extends ApplicationAdapter {
 		bestScore.setColor(Color.BLACK);
 		bestScore.getData().setScale(4);
 		//Geometric and collision
-		shapeRenderer = new ShapeRenderer();
+		//shapeRenderer = new ShapeRenderer();
 		circleBird = new Circle();
 		rectanglePipeUp = new Rectangle();
 		rectanglePipeDown = new Rectangle();
 
+		//Sounds
+		soundCollision = Gdx.audio.newSound(Gdx.files.internal("som_batida.wav"));
+		soundWings = Gdx.audio.newSound(Gdx.files.internal("som_asa.wav"));
+		soundScore = Gdx.audio.newSound(Gdx.files.internal("som_pontos.wav"));
 
-
+		scoreSaved = Gdx.app.getPreferences("flappyScore");
+		maxScore = scoreSaved.getInteger("LastMaxScore",0);
 
 	}
 	private void initiateTexture(){
@@ -161,9 +195,11 @@ public class FB extends ApplicationAdapter {
 	}
 
 	private void drawTexture(){
+		spriteBatch.setProjectionMatrix(orthographicCamera.combined);
+
 		spriteBatch.begin();
 		spriteBatch.draw(background, 0, 0, getWidth , getHeight);
-		spriteBatch.draw(bird[ (int) birdAnimation], birdX, birdY);
+		spriteBatch.draw(bird[ (int) birdAnimation], birdX + positionHorizontalBird, birdY);
 		spriteBatch.draw(upPipes, pipeMovement, (float) (getHeight/2 + pipePositionVertical + spaceBetweenPipes/2));
 		spriteBatch.draw(downPipes, pipeMovement, (float) (getHeight/2 - downPipes.getHeight()  + pipePositionVertical -spaceBetweenPipes/2));
 		score.draw(spriteBatch, String.valueOf(scoreValue), getWidth/2-50, getHeight/2+800);
@@ -171,7 +207,7 @@ public class FB extends ApplicationAdapter {
 		if(gameState==2){
 			spriteBatch.draw(gameOver, getWidth/2 - gameOver.getWidth()/2,  getHeight/2);
 			textRestart.draw(spriteBatch, "Touch to Restart.", getWidth/2  - 140, getHeight/2 - gameOver.getHeight()/2);
-			bestScore.draw(spriteBatch, "Your Record is: "+ String.valueOf(bestScore), getWidth/2 - gameOver.getWidth()/2, getHeight/2 - gameOver.getHeight());
+			bestScore.draw(spriteBatch, "Your Record is: "+maxScore, getWidth/2 - gameOver.getWidth()/2, getHeight/2 - gameOver.getHeight());
 		}
 		spriteBatch.end();
 
@@ -182,6 +218,7 @@ public class FB extends ApplicationAdapter {
 			if(!pipeHasPass){
 				scoreValue++;
 				pipeHasPass = true;
+				soundScore.play();
 			}
 		}
 
@@ -197,7 +234,10 @@ public class FB extends ApplicationAdapter {
 		rectanglePipeUp.set(pipeMovement, (float) (getHeight/2 + pipePositionVertical + spaceBetweenPipes/2),upPipes.getWidth(), upPipes.getHeight());
 		if(Intersector.overlaps(circleBird,rectanglePipeDown) || Intersector.overlaps(circleBird, rectanglePipeUp)){
 			Gdx.app.log("Colision", "The bird has collided on the rectangle");
-			gameState=2;
+			if(gameState==1){
+				soundCollision.play();
+				gameState=2;
+			}
 		}
 
 		/*
@@ -209,6 +249,12 @@ public class FB extends ApplicationAdapter {
 		shapeRenderer.end();
 		 */
 	}
+
+	@Override
+	public void resize(int width, int height) {
+		viewport.update(width, height);
+	}
+
 	@Override
 	public void dispose () {
 		Gdx.app.log("Dispose", "Disposed");
